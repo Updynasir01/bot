@@ -1,6 +1,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+const GEMINI_FALLBACK_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash-latest'];
 const genAI = process.env.GEMINI_API_KEY
   ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
   : null;
@@ -35,24 +36,33 @@ const generateResponse = async ({ business, userMessage, conversationHistory = [
       throw new Error('GEMINI_API_KEY is missing');
     }
 
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
     const history = messages.slice(0, -1).map((msg) => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }]
     }));
-
-    const chat = model.startChat({
-      history,
-      generationConfig: {
-        maxOutputTokens: 400,
-        temperature: 0.5
-      }
-    });
-
     const latestUserMessage = messages[messages.length - 1]?.content || userMessage;
-    const result = await chat.sendMessage(`${systemPrompt}\n\nCustomer message: ${latestUserMessage}`);
-    const text = result.response.text();
-    return text || getFallbackResponse(business);
+    const modelsToTry = [GEMINI_MODEL, ...GEMINI_FALLBACK_MODELS.filter((m) => m !== GEMINI_MODEL)];
+
+    for (const modelName of modelsToTry) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const chat = model.startChat({
+          history,
+          generationConfig: {
+            maxOutputTokens: 400,
+            temperature: 0.5
+          }
+        });
+
+        const result = await chat.sendMessage(`${systemPrompt}\n\nCustomer message: ${latestUserMessage}`);
+        const text = result.response.text();
+        if (text) return text;
+      } catch (modelErr) {
+        console.error(`Gemini model failed (${modelName}):`, modelErr.message);
+      }
+    }
+
+    throw new Error('All configured Gemini models failed');
   } catch (err) {
     console.error('AI generation error:', err);
     return getFallbackResponse(business);
