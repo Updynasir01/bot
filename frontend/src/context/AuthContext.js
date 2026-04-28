@@ -4,10 +4,7 @@ import { authAPI } from '../services/api';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [admin, setAdmin] = useState(() => {
-    const stored = localStorage.getItem('admin');
-    return stored ? JSON.parse(stored) : null;
-  });
+  const [admin, setAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -15,9 +12,15 @@ export const AuthProvider = ({ children }) => {
     if (token) {
       authAPI.me()
         .then(res => { setAdmin(res.data.admin); })
-        .catch(() => { localStorage.removeItem('token'); localStorage.removeItem('admin'); })
+        .catch(() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('admin');
+          setAdmin(null);
+        })
         .finally(() => setLoading(false));
     } else {
+      localStorage.removeItem('admin');
+      setAdmin(null);
       setLoading(false);
     }
   }, []);

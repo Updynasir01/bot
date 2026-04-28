@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 const LoginPage = () => {
-  const [email, setEmail] = useState('admin@botxafiis.com');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -78,9 +78,6 @@ const LoginPage = () => {
           </form>
         </div>
 
-        <p style={{ textAlign: 'center', color: 'var(--muted)', fontSize: '12px', marginTop: '16px' }}>
-          Default: admin@botxafiis.com / admin123
-        </p>
       </div>
     </div>
   );
