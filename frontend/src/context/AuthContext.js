@@ -8,18 +8,18 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     if (token) {
       authAPI.me()
         .then(res => { setAdmin(res.data.admin); })
         .catch(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('admin');
+          sessionStorage.removeItem('token');
+          sessionStorage.removeItem('admin');
           setAdmin(null);
         })
         .finally(() => setLoading(false));
     } else {
-      localStorage.removeItem('admin');
+      sessionStorage.removeItem('admin');
       setAdmin(null);
       setLoading(false);
     }
@@ -27,15 +27,15 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const res = await authAPI.login({ email, password });
-    localStorage.setItem('token', res.data.token);
-    localStorage.setItem('admin', JSON.stringify(res.data.admin));
+    sessionStorage.setItem('token', res.data.token);
+    sessionStorage.setItem('admin', JSON.stringify(res.data.admin));
     setAdmin(res.data.admin);
     return res.data;
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('admin');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('admin');
     setAdmin(null);
   };
 

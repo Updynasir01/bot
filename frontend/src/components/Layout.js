@@ -18,7 +18,7 @@ const Layout = () => {
     refetchInterval: 30000,
   });
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  const handleLogout = () => { logout(); navigate('/login', { replace: true }); };
 
   const navItems = [
     { to: '/', icon: <LayoutDashboard size={16} />, label: 'Dashboard', exact: true },
