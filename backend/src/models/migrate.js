@@ -31,6 +31,7 @@ const migrate = async () => {
         name VARCHAR(255) NOT NULL,
         owner_name VARCHAR(255),
         whatsapp_number VARCHAR(50) UNIQUE NOT NULL,
+        business_code VARCHAR(20) UNIQUE,
         business_type VARCHAR(100) NOT NULL,
         city VARCHAR(100),
         description TEXT,
@@ -49,6 +50,14 @@ const migrate = async () => {
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       )
+    `);
+
+    await client.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS business_code VARCHAR(20) UNIQUE`);
+
+    await client.query(`
+      UPDATE businesses
+      SET business_code = CONCAT('BIZ', LPAD(id::text, 4, '0'))
+      WHERE business_code IS NULL OR business_code = ''
     `);
 
     // Uploaded files table
@@ -105,6 +114,14 @@ const migrate = async () => {
         unique_users INTEGER DEFAULT 0,
         avg_response_ms INTEGER DEFAULT 0,
         UNIQUE(business_id, date)
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS customer_sessions (
+        from_number VARCHAR(50) PRIMARY KEY,
+        business_id INTEGER REFERENCES businesses(id) ON DELETE CASCADE,
+        last_seen_at TIMESTAMP DEFAULT NOW()
       )
     `);
 

@@ -192,6 +192,7 @@ const BusinessDetailPage = () => {
                 {[
                   ['Owner', business.owner_name || '—'],
                   ['WhatsApp', business.whatsapp_number],
+                  ['Business Code', business.business_code || '—'],
                   ['Type', business.business_type],
                   ['City', business.city || '—'],
                   ['Hours', business.business_hours || '—'],
@@ -204,6 +205,14 @@ const BusinessDetailPage = () => {
                     <span style={{ fontWeight: 600 }}>{v}</span>
                   </div>
                 ))}
+                {business.shared_whatsapp_link && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)', fontSize: 14 }}>
+                    <span style={{ color: 'var(--muted)' }}>Customer Entry Link</span>
+                    <a href={business.shared_whatsapp_link} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>
+                      Open Link
+                    </a>
+                  </div>
+                )}
               </>
             )}
           </div>

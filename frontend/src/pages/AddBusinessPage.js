@@ -22,6 +22,7 @@ const AddBusinessPage = () => {
   const qc = useQueryClient();
   const [tab, setTab] = useState(0);
   const [createdId, setCreatedId] = useState(null);
+  const [createdBusiness, setCreatedBusiness] = useState(null);
   const [uploading, setUploading] = useState({});
 
   const [form, setForm] = useState({
@@ -39,6 +40,7 @@ const AddBusinessPage = () => {
     mutationFn: () => businessAPI.create(form),
     onSuccess: (res) => {
       setCreatedId(res.data.business.id);
+      setCreatedBusiness(res.data.business);
       qc.invalidateQueries(['businesses']);
       qc.invalidateQueries(['dashboard-stats']);
       toast.success('Business created! Now upload files.');
@@ -166,6 +168,27 @@ const AddBusinessPage = () => {
               <div className="modal-sub">These files train the bot to answer customer questions</div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {createdBusiness?.business_code && (
+                  <div className="card card-sm" style={{ background: 'var(--green-glow)' }}>
+                    <div style={{ fontWeight: 700, marginBottom: 8 }}>Shared Number Setup</div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
+                      Ask this business to share this starter message with customers:
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, marginBottom: 6 }}>
+                      Hi {createdBusiness.business_code}
+                    </div>
+                    {createdBusiness.shared_whatsapp_link && (
+                      <a
+                        href={createdBusiness.shared_whatsapp_link}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontSize: 13 }}
+                      >
+                        Open test link
+                      </a>
+                    )}
+                  </div>
+                )}
                 {[
                   { key: 'faq_pdf', label: '📄 FAQ Document (PDF)', desc: 'Upload your business FAQ — bot will answer from this', accept: '.pdf' },
                   { key: 'price_excel', label: '📊 Price List (Excel / CSV)', desc: 'Product names, prices, stock availability', accept: '.xlsx,.xls,.csv' },

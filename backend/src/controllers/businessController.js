@@ -1,6 +1,39 @@
 const pool = require('../models/db');
 const fileService = require('../services/fileService');
 
+const normalizeCode = (value = '') => value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+
+const buildCodeCandidate = (name = '') => {
+  const cleaned = normalizeCode(name);
+  if (cleaned.length >= 4) return cleaned.slice(0, 8);
+  return `BIZ${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+};
+
+const generateUniqueBusinessCode = async (name) => {
+  const base = buildCodeCandidate(name);
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const suffix = attempt === 0 ? '' : `${Math.floor(100 + Math.random() * 900)}`;
+    const candidate = normalizeCode(`${base}${suffix}`).slice(0, 10);
+    const existing = await pool.query('SELECT id FROM businesses WHERE business_code = $1 LIMIT 1', [candidate]);
+    if (existing.rows.length === 0) return candidate;
+  }
+
+  return `BIZ${Date.now().toString().slice(-6)}`;
+};
+
+const addSharedLink = (business) => {
+  const twilioFrom = process.env.TWILIO_WHATSAPP_FROM || '';
+  const botNumber = twilioFrom.replace('whatsapp:', '').replace(/\s+/g, '');
+  if (!botNumber || !business?.business_code) return business;
+
+  const encodedText = encodeURIComponent(`Hi ${business.business_code}`);
+  return {
+    ...business,
+    shared_whatsapp_link: `https://wa.me/${botNumber.replace('+', '')}?text=${encodedText}`
+  };
+};
+
 // GET all businesses with stats
 const getAll = async (req, res) => {
   try {
@@ -27,7 +60,7 @@ const getAll = async (req, res) => {
     }
     if (search) {
       params.push(`%${search}%`);
-      query += ` AND (b.name ILIKE $${params.length} OR b.whatsapp_number ILIKE $${params.length} OR b.owner_name ILIKE $${params.length})`;
+      query += ` AND (b.name ILIKE $${params.length} OR b.whatsapp_number ILIKE $${params.length} OR b.owner_name ILIKE $${params.length} OR b.business_code ILIKE $${params.length})`;
     }
 
     query += ` GROUP BY b.id ORDER BY b.created_at DESC`;
@@ -44,7 +77,7 @@ const getAll = async (req, res) => {
     const countResult = await pool.query(countQuery, countParams);
 
     res.json({
-      businesses: result.rows,
+      businesses: result.rows.map(addSharedLink),
       total: parseInt(countResult.rows[0].count),
       page: parseInt(page),
       pages: Math.ceil(countResult.rows[0].count / limit)
@@ -81,7 +114,7 @@ const getOne = async (req, res) => {
     );
 
     res.json({
-      business: bizResult.rows[0],
+      business: addSharedLink(bizResult.rows[0]),
       files: files.rows,
       recentMessages: recentMessages.rows,
       payments: payments.rows
@@ -113,12 +146,14 @@ const create = async (req, res) => {
     const dueDate = new Date();
     dueDate.setMonth(dueDate.getMonth() + 1);
 
+    const businessCode = await generateUniqueBusinessCode(name);
+
     const result = await pool.query(`
       INSERT INTO businesses (
         name, owner_name, whatsapp_number, business_type, city, description,
         plan, monthly_fee, greeting_somali, greeting_english, language_preference,
-        business_hours, after_hours_message, payment_due_date, status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending')
+        business_hours, after_hours_message, payment_due_date, status, business_code
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending',$15)
       RETURNING *
     `, [
       name, owner_name, whatsapp_number, business_type, city, description,
@@ -128,10 +163,11 @@ const create = async (req, res) => {
       language_preference || 'both',
       business_hours || 'Sat-Thu 8am-9pm',
       after_hours_message || 'Xafiiska waa xiran yahay. We are currently closed. ⏰',
-      dueDate
+      dueDate,
+      businessCode
     ]);
 
-    res.status(201).json({ business: result.rows[0] });
+    res.status(201).json({ business: addSharedLink(result.rows[0]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -167,7 +203,7 @@ const update = async (req, res) => {
     );
 
     if (result.rows.length === 0) return res.status(404).json({ error: 'Business not found' });
-    res.json({ business: result.rows[0] });
+    res.json({ business: addSharedLink(result.rows[0]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

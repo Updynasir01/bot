@@ -2,6 +2,47 @@ const pool = require('../models/db');
 const aiService = require('../services/aiService');
 const twilioService = require('../services/twilioService');
 
+const normalizeBusinessCode = (text = '') => text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+const resolveBusinessForMessage = async ({ toNumber, fromNumber, messageText }) => {
+  // Dedicated-number mode: exact match by receiving number.
+  const directBiz = await pool.query(
+    'SELECT * FROM businesses WHERE whatsapp_number = $1 AND bot_active = true AND status = $2 LIMIT 1',
+    [toNumber, 'active']
+  );
+  if (directBiz.rows.length > 0) {
+    return directBiz.rows[0];
+  }
+
+  // Shared-number mode: detect business code in current message first (supports switching).
+  const normalizedText = normalizeBusinessCode(messageText);
+  if (normalizedText) {
+    const codeMatch = await pool.query(
+      `SELECT *
+       FROM businesses
+       WHERE bot_active = true
+         AND status = $1
+         AND business_code IS NOT NULL
+         AND $2 LIKE ('%' || business_code || '%')
+       ORDER BY LENGTH(business_code) DESC
+       LIMIT 1`,
+      ['active', normalizedText]
+    );
+    if (codeMatch.rows.length > 0) return codeMatch.rows[0];
+  }
+
+  // If no code in message, reuse last routed business for this customer.
+  const priorSession = await pool.query(
+    `SELECT b.*
+     FROM customer_sessions cs
+     JOIN businesses b ON b.id = cs.business_id
+     WHERE cs.from_number = $1 AND b.bot_active = true AND b.status = $2
+     LIMIT 1`,
+    [fromNumber, 'active']
+  );
+  return priorSession.rows[0] || null;
+};
+
 // Twilio webhook - incoming WhatsApp message
 const handleIncoming = async (req, res) => {
   // Twilio expects TwiML response OR we respond via REST API
@@ -18,18 +59,35 @@ const handleIncoming = async (req, res) => {
 
     if (!messageText) return;
 
-    // Find the business by WhatsApp number
-    const bizResult = await pool.query(
-      'SELECT * FROM businesses WHERE whatsapp_number = $1 AND bot_active = true AND status = $2',
-      [toNumber, 'active']
-    );
+    const business = await resolveBusinessForMessage({ toNumber, fromNumber, messageText });
+    if (!business) {
+      const activeCodes = await pool.query(
+        'SELECT name, business_code FROM businesses WHERE bot_active = true AND status = $1 AND business_code IS NOT NULL ORDER BY name LIMIT 12',
+        ['active']
+      );
+      const options = activeCodes.rows
+        .map((row) => `- ${row.name}: ${row.business_code}`)
+        .join('\n');
+      const helpMessage = options
+        ? `Welcome to BotXafiis shared support.\n\nPlease start with your business code. Example: Hi ${activeCodes.rows[0].business_code}\n\nAvailable codes:\n${options}`
+        : 'No active business bots were found. Please try again later.';
 
-    if (bizResult.rows.length === 0) {
-      console.log(`No active bot found for number: ${toNumber}`);
+      await twilioService.sendMessage({
+        to: From,
+        from: To,
+        body: helpMessage
+      });
       return;
     }
 
-    const business = bizResult.rows[0];
+    await pool.query(
+      `INSERT INTO customer_sessions (from_number, business_id, last_seen_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (from_number)
+       DO UPDATE SET business_id = EXCLUDED.business_id, last_seen_at = NOW()`,
+      [fromNumber, business.id]
+    );
+
     const startTime = Date.now();
 
     // Save incoming message
