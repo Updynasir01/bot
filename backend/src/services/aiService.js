@@ -1,6 +1,9 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+const genAI = process.env.GEMINI_API_KEY
+  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+  : null;
 
 const generateResponse = async ({ business, userMessage, conversationHistory = [] }) => {
   try {
@@ -28,14 +31,28 @@ const generateResponse = async ({ business, userMessage, conversationHistory = [
     // Add current message
     messages.push({ role: 'user', content: userMessage });
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 400,
-      system: systemPrompt,
-      messages
+    if (!genAI) {
+      throw new Error('GEMINI_API_KEY is missing');
+    }
+
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+    const history = messages.slice(0, -1).map((msg) => ({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: msg.content }]
+    }));
+
+    const chat = model.startChat({
+      history,
+      generationConfig: {
+        maxOutputTokens: 400,
+        temperature: 0.5
+      }
     });
 
-    return response.content[0].text;
+    const latestUserMessage = messages[messages.length - 1]?.content || userMessage;
+    const result = await chat.sendMessage(`${systemPrompt}\n\nCustomer message: ${latestUserMessage}`);
+    const text = result.response.text();
+    return text || getFallbackResponse(business);
   } catch (err) {
     console.error('AI generation error:', err);
     return getFallbackResponse(business);
