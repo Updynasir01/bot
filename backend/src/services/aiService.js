@@ -102,14 +102,91 @@ GREETINGS:
 Keep responses short and WhatsApp-friendly. Do not use markdown formatting.`;
 };
 
+const DAY_TO_INDEX = {
+  sun: 0,
+  sunday: 0,
+  mon: 1,
+  monday: 1,
+  tue: 2,
+  tues: 2,
+  tuesday: 2,
+  wed: 3,
+  wednesday: 3,
+  thu: 4,
+  thur: 4,
+  thurs: 4,
+  thursday: 4,
+  fri: 5,
+  friday: 5,
+  sat: 6,
+  saturday: 6
+};
+
+const parseDay = (value) => {
+  if (!value) return null;
+  return DAY_TO_INDEX[value.trim().toLowerCase()] ?? null;
+};
+
+const isDayInRange = (currentDay, startDay, endDay) => {
+  if (startDay === null || endDay === null) return true;
+  if (startDay <= endDay) return currentDay >= startDay && currentDay <= endDay;
+  return currentDay >= startDay || currentDay <= endDay;
+};
+
+const parseTimeToMinutes = (value) => {
+  if (!value) return null;
+  const clean = value.trim().toLowerCase().replace(/\s+/g, '');
+  const match = clean.match(/^(\d{1,2})(?::(\d{2}))?(am|pm)?$/);
+  if (!match) return null;
+
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2] || '0', 10);
+  const period = match[3];
+
+  if (minutes < 0 || minutes > 59 || hours < 0 || hours > 23) return null;
+
+  if (period) {
+    if (hours < 1 || hours > 12) return null;
+    if (period === 'am') hours = hours === 12 ? 0 : hours;
+    if (period === 'pm') hours = hours === 12 ? 12 : hours + 12;
+  }
+
+  return (hours * 60) + minutes;
+};
+
 const checkBusinessHours = (hoursString) => {
   if (!hoursString) return true; // Default: always open
-  // Simple check - in production this would parse properly
+
+  // Expected examples:
+  // - "Sat-Thu 8pm-9am"
+  // - "Monday-Friday 8:00am-6:00pm"
+  const match = String(hoursString).trim().match(/^([A-Za-z]+)\s*-\s*([A-Za-z]+)\s+(.+?)\s*-\s*(.+)$/);
+  if (!match) return true; // keep bot available if format is unknown
+
+  const [, startDayRaw, endDayRaw, openRaw, closeRaw] = match;
+  const startDay = parseDay(startDayRaw);
+  const endDay = parseDay(endDayRaw);
+  const openMinutes = parseTimeToMinutes(openRaw);
+  const closeMinutes = parseTimeToMinutes(closeRaw);
+
+  if (openMinutes === null || closeMinutes === null) return true;
+
   const now = new Date();
-  const hour = now.getHours();
-  const day = now.getDay(); // 0 = Sunday
-  // Basic: Mon-Sat 8am-9pm
-  return day !== 0 && hour >= 8 && hour < 21;
+  const currentDay = now.getDay();
+  const currentMinutes = (now.getHours() * 60) + now.getMinutes();
+
+  if (!isDayInRange(currentDay, startDay, endDay)) return false;
+
+  // Same opening and closing time means open all day
+  if (openMinutes === closeMinutes) return true;
+
+  // Overnight hours, e.g. 8pm-9am
+  if (openMinutes > closeMinutes) {
+    return currentMinutes >= openMinutes || currentMinutes < closeMinutes;
+  }
+
+  // Normal same-day hours, e.g. 8am-9pm
+  return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
 };
 
 const getFallbackResponse = (business) => {
